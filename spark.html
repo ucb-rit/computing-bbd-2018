@@ -1,0 +1,344 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <meta http-equiv="Content-Style-Type" content="text/css" />
+  <meta name="generator" content="pandoc" />
+  <meta name="author" content="November 5, 2018" />
+  <title>Spark demonstration</title>
+  <style type="text/css">code{white-space: pre;}</style>
+</head>
+<body>
+<div id="header">
+<h1 class="title">Spark demonstration</h1>
+<h2 class="author">November 5, 2018</h2>
+<h3 class="date">Chris Paciorek, Berkeley Research Computing</h3>
+</div>
+<h1 id="overview-of-hadoop-mapreduce-and-spark">Overview of Hadoop, MapReduce, and Spark</h1>
+<p>Here we'll talk about a somewhat recent development in parallel computing. Traditionally, high-performance computing (HPC) has concentrated on techniques and tools for message passing such as MPI and on developing efficient algorithms to use these techniques.</p>
+<h1 id="mapreduce">MapReduce</h1>
+<p>A basic paradigm for working with big datasets is the MapReduce paradigm. The basic idea is to store the data in a distributed fashion across multiple nodes and try to do the computation in pieces on the data on each node. Results can also be stored in a distributed fashion.</p>
+<p>A key benefit of this is that if you can't fit your dataset on disk on one machine, you generally can on a cluster of machines. And your processing of the dataset can happen in parallel. This is the basic idea of MapReduce.</p>
+<p>The basic steps of MapReduce are as follows:</p>
+<ul>
+<li>read individual data objects (e.g., records/lines from CSVs or individual data files)</li>
+<li>map: create key-value pairs using the inputs (more formally, the map step takes a key-value pair and returns a new key-value pair)</li>
+<li>reduce - for each key, do an operation on the associated values and create a result - i.e., aggregate within the values assigned to each key</li>
+<li>write out the {key,result} pair</li>
+</ul>
+<p>An example of key-value pairs is as follows. Suppose you have a dataset of individuals with information on their income and the state in which they live and you want to calculate the average and income within each state. In this case, one starts with a dataset of individual-level rows and uses a map step to set the key to be the state and the value to be income for an individual. Then the reduce step finds the mean and standard deviation of all the values with the same key (i.e., in the same state).</p>
+<p>More explicitly the reduce step involves summing income and summing squared income and summing the number of individuals in each state and using those summary statistics to compute average and standard deviation.</p>
+<p>It's actually pretty similar to functionality in dplyr, and dplyr can connect to a Spark instance, while the sparklyr R package allows for use of dplyr syntax.</p>
+<h1 id="what-can-we-do-with-mapreduce">What can we do with MapReduce?</h1>
+<ul>
+<li>basic database-like operations on datasets: transformation of records, filtering</li>
+<li>aggregation/summarization by groups</li>
+<li>run algorithms (e.g., statistical fitting) that can be written as a series of map and reduce steps (e.g., gradient-based optimization, certain linear algebra operations)</li>
+</ul>
+<h1 id="hadoop-and-spark">Hadoop and Spark</h1>
+<p>Hadoop is an infrastructure for enabling MapReduce across a network of machines. The basic idea is to hide the complexity of distributing the calculations and collecting results. Hadoop includes a file system for distributed storage (HDFS), where each piece of information is stored redundantly (on multiple machines). Calculations can then be done in a parallel fashion, often on data in place on each machine thereby limiting the amount of communication that has to be done over the network. Hadoop also monitors completion of tasks and if a node fails, it will redo the relevant tasks on another node. Hadoop is based on Java.</p>
+<p>Setting up a Hadoop cluster can be tricky. Hopefully if you're in a position to need to use Hadoop, it will be set up for you and you will be interacting with it as a user/data analyst.</p>
+<p>Ok, so what is Spark? You can think of Spark as in-memory Hadoop. Spark allows one to treat the memory across multiple nodes as a big pool of memory. Spark should be faster than Hadoop when the data will fit in the collective memory of multiple nodes. In cases where it does not, Spark will sequentially process through the data, reading and writing to the HDFS.</p>
+<h1 id="spark-overview">Spark: Overview</h1>
+<p>We'll focus on Spark rather than Hadoop for the speed reasons described above and because I think Spark provides a very nice environment/interface in which to work. Plus it comes out of the (former) AmpLab here at Berkeley. We'll start with the Python interface to Spark and then see a bit of sparklyr.</p>
+<p>More details on Spark are in the <a href="https://spark.apache.org/docs/latest/rdd-programming-guide.html">Spark programming guide</a>.</p>
+<p>Some key aspects of Spark:</p>
+<ul>
+<li>Spark can read/write from various locations, but a standard location is the <strong>HDFS</strong>, with read/write done in parallel across the cores of the Spark cluster.</li>
+<li>A common data structure in Spark is a <strong>Resilient Distributed Dataset (RDD)</strong>, which acts like a sort of distributed data frame.</li>
+<li>RDDs are stored in chunks called <strong>partitions</strong>, stored on the different nodes of the cluster (either in memory or if necessary on disk).</li>
+<li>Spark has a core set of methods that can be applied to RDDs to do operations such as <strong>filtering/subsetting, transformation/mapping, reduction, and others</strong>.</li>
+<li>The operations are done in <strong>parallel</strong> on the different partitions of the data</li>
+<li>Some operations such as reduction generally involve a <strong>shuffle</strong>, moving data between nodes of the cluster. This is costly.</li>
+<li>Recent versions of Spark have distributed <strong>DataFrames</strong> and the ability to run SQL queries on the data.</li>
+</ul>
+<p>Note that some headaches with Spark include:</p>
+<ul>
+<li>whether and how to set the amount of memory available for Spark workers (executor memory) and the Spark master process (driver memory)</li>
+<li>hard-to-diagnose failures (including out-of-memory issues)</li>
+</ul>
+<h1 id="getting-started">Getting started</h1>
+<p>We'll use Spark on Savio. You can also use Spark on XSEDE Bridges (among other XSEDE resources), and via commercial cloud computing providers, as well as on your laptop (but obviously only to experiment with small datasets). The demo works with a dataset of Wikipedia traffic, ~110 GB of zipped data (~500 GB unzipped) from October-December 2008, though for in-class presentation we'll work with a much smaller set of 1 day of data.</p>
+<p>The Wikipedia traffic are available through Amazon Web Services storage. The steps to get it are:</p>
+<ol style="list-style-type: decimal">
+<li>Start an AWS EC2 virtual machine that mounts the data onto the VM</li>
+<li>Install Globus on the VM</li>
+<li>Transfer the data to Savio via Globus</li>
+</ol>
+<p>Details on how I did this are in <em>get_data.sh</em>. The resulting data are on Savio in <code>/global/scratch/paciorek/wikistats_full/raw</code>.</p>
+<h1 id="storing-data-for-use-in-spark">Storing data for use in Spark</h1>
+<p>In many Spark contexts, the data would be stored in a distributed fashion across the hard drives attached to different nodes of a cluster (i.e., in the HDFS).</p>
+<p>On Savio, Spark is set up to just use the scratch file system, so one would <em>not</em> run the code here, but I'm including it to give a sense for what it's like to work with HDFS.</p>
+<p>First we would need to get the data from the standard filesystem to the HDFS. Note that the file system commands are like standard UNIX commands, but you need to do <code>hadoop fs</code> in front of the command.</p>
+<p>These code is also in <em>hdfs.sh</em>.</p>
+<pre><code>hadoop fs -ls /
+hadoop fs -ls /user
+hadoop fs -mkdir /user/paciorek/data
+hadoop fs -mkdir /user/paciorek/data/wikistats
+hadoop fs -mkdir /user/paciorek/data/wikistats/raw
+hadoop fs -mkdir /user/paciorek/data/wikistats/dated
+
+hadoop fs -copyFromLocal /global/scratch/paciorek/wikistats/raw/* \
+       /user/paciorek/data/wikistats/raw
+
+# check files on the HDFS, e.g.:
+hadoop fs -ls /user/paciorek/data/wikistats/raw
+
+## now do some processing with Spark, e.g., preprocess.{sh,py}
+
+# after processing can retrieve data from HDFS as needed
+hadoop fs -copyToLocal /user/paciorek/data/wikistats/dated .</code></pre>
+<h1 id="using-spark-on-savio">Using Spark on Savio</h1>
+<p>Here are the steps to use Spark on Savio. We'll demo using an interactive job but one could include these commands in the SLURM job script.</p>
+<pre><code>srun -A  co_stat -p savio2 --nodes=2 -t 1:00:00 --pty bash
+# do the next steps to start Spark in an interactive job after running srun
+#     or as part of your sbatch job script
+module load java spark/2.1.0 python/3.5
+source /global/home/groups/allhands/bin/spark_helper.sh
+spark-start</code></pre>
+<p>We can now use Spark via the Python interface interactively. We'll see how to submit batch jobs later.</p>
+<pre><code># PySpark using Python 3.5 (Spark 2.1.0 doesn&#39;t support Python 3.6)
+# HASHSEED business has to do ensuring consistency across Python sessions
+pyspark --master $SPARK_URL --conf &quot;spark.executorEnv.PYTHONHASHSEED=321&quot; \
+        --executor-memory 50G </code></pre>
+<h1 id="preprocessing-the-wikipedia-traffic-data">Preprocessing the Wikipedia traffic data</h1>
+<p>At this point, one complication is that the date-time information on the Wikipedia traffic is embedded in the file names. We'd like that information to be fields in the data files. This is done by running the code in <em>preprocess.py</em> in the Python interface to Spark (pyspark). Note that trying to use multiple nodes and to repartition in various ways caused various errors I was unable to diagnose, but the code as is should work albeit somewhat slowly.</p>
+<p>In principle one could run the <em>preprocess.sh</em> SLURM job script to run <em>preprocess.py</em> as a batch submission, but I was having problems getting that to run successfully.</p>
+<p>The results of that preprocessing are on Savio in <code>/global/scratch/paciorek/wikistats_full/dated</code>.</p>
+<h1 id="spark-in-action-processing-the-wikipedia-traffic-data">Spark in action: processing the Wikipedia traffic data</h1>
+<p>Now we'll do some basic manipulations with the Wikipedia dataset, with the goal of analyzing traffic to Barack Obama's sites during the time around his election as president in 2008.</p>
+<ul>
+<li>We'll count the number of lines/observations in our dataset.</li>
+<li>then we'll do a filtering step to get only the Barack Obama sites,</li>
+<li>then do a map step that creates key-value pairs from each record/observation/row and</li>
+<li>then do a reduce that counts the number of views by hour and language, so hour-day-lang will serve as the key,</li>
+<li>then do a map step to prepare the data so it can be output in a nice format.</li>
+</ul>
+<p>The code below is also in <em>process_data.py</em>.</p>
+<p>Note that Spark uses <em>lazy evaluation</em>. Actual computation only happens when one asks for a result to be returned or output written to disk.</p>
+<h1 id="spark-in-action-read-and-filter">Spark in action: read and filter</h1>
+<p>First we'll see how we read in the data and filter to the observations (lines / rows) of interest. The full dataset is in <em>/global/scratch/paciorek/wikistats_full/dated</em> but I'll work with a subset of the data in <em>/global/scratch/paciorek/wikistats_small/dated</em></p>
+<pre><code>dir = &#39;/global/scratch/paciorek/wikistats_small&#39;
+
+### read data and do some checks ###
+
+lines = sc.textFile(dir + &#39;/&#39; + &#39;dated&#39;) 
+
+lines.getNumPartitions()  # 16590 in full dataset 
+
+# note delayed evaluation
+lines.count()  # 9467817626 in full dataset
+
+# watch the UI and watch wwall as computation progresses
+
+testLines = lines.take(10)
+testLines[0]
+testLines[9]
+
+### filter to sites of interest ###
+
+import re
+
+def find(line, regex = &quot;Barack_Obama&quot;, language = None):
+    vals = line.split(&#39; &#39;)
+    if len(vals) &lt; 6:
+        return(False)
+    tmp = re.search(regex, vals[3])
+    if tmp is None or (language != None and vals[2] != language):
+        return(False)
+    else:
+        return(True)
+
+lines.filter(find).take(100) # pretty quick
+
+obama = lines.filter(find)
+obama.count()  # 433k observations in full dataset</code></pre>
+<h1 id="spark-in-action-summarize-and-output">Spark in action: summarize and output</h1>
+<p>Now let's use the mapReduce paradigm to get the aggregate statistics we want.</p>
+<pre><code>### map-reduce step to sum hits across date-time-language triplets ###
+
+from operator import add
+
+def stratify(line):
+    # create key-value pairs where:
+    #   key = date-time-language
+    #   value = number of website hits
+    vals = line.split(&#39; &#39;)
+    return(vals[0] + &#39;-&#39; + vals[1] + &#39;-&#39; + vals[2], int(vals[4]))
+
+# sum number of hits for each date-time-language value
+counts = obama.map(stratify).reduceByKey(add)  # 5 minutes on full dataset
+counts.count()   # 128889 in full dataset
+counts.take(5)
+
+### map step to prepare output ###
+
+def transform(vals):
+    # split key info back into separate fields
+    key = vals[0].split(&#39;-&#39;)
+    return(&quot;,&quot;.join((key[0], key[1], key[2], str(vals[1]))))
+
+### output to file ###
+
+# have one partition because one file per partition is written out
+counts.map(transform).repartition(1).saveAsTextFile(dir + &#39;/&#39; + &#39;obama-counts&#39;) # 5 sec.</code></pre>
+<h1 id="spark-monitoring">Spark monitoring</h1>
+<p>There are various interfaces to monitor Spark and the HDFS.</p>
+<ul>
+<li><code>http://&lt;master_url&gt;:8080</code> -- general information about the Spark cluster</li>
+<li><code>http://&lt;master_url&gt;:4040</code> -- information about the Spark tasks being executed</li>
+<li><code>http://&lt;master_url&gt;:50070</code> -- information about the HDFS</li>
+</ul>
+<p>On Savio, we could start a browser on the visualization node and connect to the URLs above to monitor the status of Spark.</p>
+<p>When one runs <code>spark-start</code> on Savio, it will indicate the <master_url> when Spark starts. It will also mention some log files, so if you look in the log file for the master, you should see a line like this that indicates what the <code>&lt;master_url&gt;</code> is:</p>
+<pre><code>17/10/10 22:31:09 INFO MasterWebUI: Started MasterWebUI at http://10.0.5.93:8080</code></pre>
+<h1 id="spark-operations">Spark operations</h1>
+<p>Let's consider some of the core methods we used.</p>
+<ul>
+<li>filter(): create a subset</li>
+<li>map(): take an RDD and apply a function to each element, returning an RDD</li>
+<li>reduce() and reduceByKey(): take an RDD and apply a reduction operation to the elements, doing the reduction stratified by the key values for reduceByKey(). Reduction functions need to be associative (order across records doesn't matter) and commutative (order of arguments doesn't matter) and take 2 arguments and return 1, all so that they can be done in parallel in a straightforward way.</li>
+<li>collect(): collect results back to the master</li>
+<li>cache(): tell Spark to keep the RDD in memory for later use</li>
+<li>repartition(): rework the RDD so it is divided into the specified number of partitions</li>
+</ul>
+<p>Note that all of the various operations are OOP methods applied to either the SparkContext management object or to a Spark dataset, called a Resilient Distributed Dataset (RDD). Here <code>lines</code> and <code>counts</code> are both RDDs. However the result of <code>collect()</code> is just a standard Python object.</p>
+<p>Question: how many chunks do you think we want the RDD split into? What might the tradeoffs be?</p>
+<h1 id="spark-dataframes-and-sql-queries">Spark DataFrames and SQL queries</h1>
+<p>In recent versions of Spark, one can work with more structured data objects than RDDs. Spark now provides DataFrames, which behave like distributed versions of R or Pandas dataframes. They can also be queried using SQL syntax.</p>
+<p>Here's some example code for using DataFrames. The code is also in <em>process_data_df.py</em>.</p>
+<pre><code>dir = &#39;/global/scratch/paciorek/wikistats_small&#39;
+
+lines = sc.textFile(dir + &#39;/&#39; + &#39;dated&#39;)
+
+### create DataFrame and do some operations on it ###
+
+def remove_partial_lines(line):
+    vals = line.split(&#39; &#39;)
+    if len(vals) &lt; 6:
+        return(False)
+    else:
+        return(True)
+
+def create_df_row(line):
+    p = line.split(&#39; &#39;)
+    return(int(p[0]), int(p[1]), p[2], p[3], int(p[4]), int(p[5]))
+
+
+tmp = lines.filter(remove_partial_lines).map(create_df_row)
+
+## &#39;sqlContext&#39; is the Spark sqlContext management object, created via PySpark
+## if you simply start Python without invoking PySpark,
+## you would need to create the sqlContext object yourself
+
+df = sqlContext.createDataFrame(tmp, schema = [&quot;date&quot;, &quot;hour&quot;, &quot;lang&quot;, &quot;site&quot;, &quot;hits&quot;, &quot;size&quot;])
+
+df.printSchema()
+
+## shades of dplyr and R/Pandas dataframes
+df.select(&#39;site&#39;).show()
+# number of sites by language &amp; day (shouldn&#39;t vary much by day):
+df.groupBy(&#39;lang&#39;).count().show()    
+langTable = df.groupBy(&#39;lang&#39;).count().collect()
+
+sub = df.filter(df.site == &quot;Barack_Obama&quot;)
+# note: not sure how to get filter to work with regular expression operations
+counts = sub.groupBy([&#39;date&#39;,&#39;hour&#39;,&#39;lang&#39;]).agg({&quot;hits&quot;: &quot;sum&quot;}).collect()</code></pre>
+<p>And here's how we use SQL with a DataFrame:</p>
+<pre><code>### use SQL with a DataFrame ###
+
+df.registerTempTable(&quot;wikiHits&quot;)  # name of &#39;SQL&#39; table is &#39;wikiHits&#39;
+
+subset = sqlContext.sql(&quot;SELECT * FROM wikiHits WHERE lang = &#39;en&#39; AND site LIKE &#39;%Barack_Obama%&#39;&quot;)
+
+subset.take(5)
+# [Row(date=20081104, hour=1, lang=&#39;en&#39;, site=&#39;Template_talk:Barack_Obama&#39;, hits=3, size=15554), Row(date=20081104, hour=170000, lang=&#39;en&#39;, site=&#39;Special:Export/Barack_Obama&#39;, hits=1, size=501667), Row(date=20081104, hour=120001, lang=&#39;en&#39;, site=&#39;Senator_Barack_Obama&#39;, hits=1, size=480299), Row(date=20081104, hour=30000, lang=&#39;en&#39;, site=&#39;Special:RecentChangesLinked/Image:Barack_Obama.jpg&#39;, hits=1, size=60546), Row(date=20081104, hour=150000, lang=&#39;en&#39;, site=&#39;User:Giftlite/List_of_Nobel_laureates_who_endorse_Barack_Obama&#39;, hits=4, size=13431)]
+
+summary = sqlContext.sql(&quot;SELECT lang, date, hour, sum(hits) as n FROM wikiHits GROUP BY lang, date, hour ORDER BY n desc limit 20&quot;)
+results = summary.collect()
+results[0:4]
+[Row(lang=&#39;en&#39;, date=20081104, hour=190000, n=10908981), Row(lang=&#39;en&#39;, date=20081104, hour=210000, n=10886268), Row(lang=&#39;en&#39;, date=20081104, hour=200000, n=10799658), Row(lang=&#39;en&#39;, date=20081104, hour=180001, n=10737208)]</code></pre>
+<h1 id="analysis-results">Analysis results</h1>
+<p>The file <em>obama_plot.R</em> does some manipulations to plot the hits as a function of time, shown in <em>obamaTraffic.pdf</em>.</p>
+<p>So there you have it -- from big data (500 GB unzipped) to knowledge (a 17 KB file of plots).</p>
+<h1 id="other-comments">Other comments</h1>
+<h3 id="running-a-batch-spark-job">Running a batch Spark job</h3>
+<p>We can run a Spark job using Python code as a batch script rather than interactively. Here's an example, which just reads in the Wikistats data and counts the lines.</p>
+<pre><code>spark-submit --master $SPARK_URL  --conf &quot;spark.executorEnv.PYTHONHASHSEED=321&quot; \
+             --executor-memory 60G test_batch.py</code></pre>
+<h3 id="python-vs.-scalajava">Python vs. Scala/Java</h3>
+<p>Spark is implemented natively in Java and Scala, so all calculations in Python involve taking Java data objects converting them to Python objects, doing the calculation, and then converting back to Java. This process is called serialization and takes time, so the speed when implementing your work in Scala (or Java) may be faster. Here's a <a href="http://apache-spark-user-list.1001560.n3.nabble.com/Scala-vs-Python-performance-differences-td4247.html">small bit of info</a> on that.</p>
+<h1 id="r-interfaces-to-spark">R interfaces to Spark</h1>
+<p>Both SparkR (from the Spark folks) and sparklyr (from the RStudio folks) allow you to interact with Spark-based data from R. There are some limitations to what you can do (both in what is possible and in what will execute with reasonable speed), so for heavy use of Spark you may want to use Python or even the Scala or Java interfaces.</p>
+<h1 id="sparklyr">sparklyr</h1>
+<p>sparklyr allows you to interact with data in Spark from R.</p>
+<p>You can:</p>
+<ul>
+<li>use dplyr functionality</li>
+<li>use distributed apply computations via <code>spark_apply</code>.</li>
+</ul>
+<p>There are some limitations though:</p>
+<ul>
+<li>the dplyr functionality translates operations to SQL so there are limited operations one can do, particularly in terms of computations on a given row of data</li>
+<li>spark_apply() appears to run very slowly, presumably because data is being serialized back and forth between R and Java data structures.</li>
+</ul>
+<h1 id="sparklyr-example">sparklyr example</h1>
+<p>Here's some example code, also found in <em>process.R</em>. (Note we need to do <code>module load r r-packages</code> at the shell command line in order to be able to start R.)</p>
+<p>We start by connecting from R to the running Spark process.</p>
+<pre><code>if(!require(sparklyr)) {
+    install.packages(&quot;sparklyr&quot;)
+    # spark_install() ## if spark not already installed
+}
+
+### connect to Spark ###
+
+## need to increase memory otherwise get hard-to-interpret Java
+## errors due to running out of memory; total memory on the node is 64 GB
+conf &lt;- spark_config()
+conf$spark.driver.memory &lt;- &quot;8G&quot;
+conf$spark.executor.memory &lt;- &quot;50G&quot;
+
+# sc &lt;- spark_connect(master = &quot;local&quot;)  # if doing on laptop
+sc &lt;- spark_connect(master = Sys.getenv(&quot;SPARK_URL&quot;),
+                    config = conf)  # non-local</code></pre>
+<p>Now we can read data into Spark via the R interface.</p>
+<pre><code>### read data in ###
+
+cols &lt;- c(date = &#39;numeric&#39;, hour = &#39;numeric&#39;, lang = &#39;character&#39;,
+          site = &#39;character&#39;, hits = &#39;numeric&#39;, size = &#39;numeric&#39;)
+          
+
+## takes a while even with only 1.4 GB (zipped) input data (100 sec.)
+wiki &lt;- spark_read_csv(sc, &quot;wikistats&quot;,
+                       &quot;/global/scratch/paciorek/wikistats_small/dated&quot;,
+                       header = FALSE, delimiter = &#39; &#39;,
+                       columns = cols, infer_schema = FALSE)
+
+head(wiki)
+class(wiki)
+dim(wiki)   # not all operations work on a spark dataframe</code></pre>
+<h1 id="sparklyr-using-dplyr-operations-on-a-spark-dataframe">sparklyr: Using dplyr operations on a Spark dataframe</h1>
+<pre><code>library(dplyr)
+
+wiki_en &lt;- wiki %&gt;% filter(lang == &quot;en&quot;)
+head(wiki_en)
+
+table &lt;- wiki %&gt;% group_by(lang) %&gt;% summarize(count = n()) %&gt;%
+    arrange(desc(count))
+## note the lazy evaluation: need to look at table to get computation to run
+table
+dim(table)
+class(table)</code></pre>
+<h1 id="sparklyr-using-sql-operations-on-a-spark-dataframe">sparklyr: Using SQL operations on a Spark dataframe</h1>
+<pre><code>### SQL queries ###
+
+library(DBI)
+## reference the Spark table (see spark_read_csv arguments)
+## not the R tbl_spark interface object
+obama &lt;- dbGetQuery(sc,
+            &quot;SELECT date, hour, lang, sum(hits) as n FROM wikistats WHERE site like &#39;Barack_Obama&#39; group by date, hour, lang&quot;)
+class(obama)
+head(obama)
+obama %&gt;% dplyr::filter(lang == &#39;en&#39;)</code></pre>
+</body>
+</html>
