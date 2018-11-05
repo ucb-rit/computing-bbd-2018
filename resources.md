@@ -20,9 +20,9 @@ This presentation will cover the following topics:
 
  - Resources
     - Data storage
-    - XSEDE (NSF) resources
     - Savio resources
-    - Getting access to Savio
+       - Getting access to Savio
+    - XSEDE (NSF) resources
     - How to get help
  - Spark
     - Overview of Map-Reduce
@@ -49,6 +49,30 @@ This presentation will cover the following topics:
  - BRC has a Windows-based virtual machine service, AEoD, that may be able to address secure data issue
 
 Research Data Management can help you explore options.
+
+
+# System capabilities and hardware
+
+- Savio is a >380-node, >8000-core Linux cluster rated at >300 peak teraFLOPS. 
+   - about 174 compute nodes provided by the institution for general access
+   - about 211 compute nodes contributed by researchers in the Condo program
+
+Various pools (partitions) of nodes with specific capabilities
+
+  - 24-core, 64 GB compute nodes (allocated per node)
+  - large-memory nodes (128 GB and 512 GB)
+  - GPU nodes
+  - fast-CPU nodes allocated per core
+
+For more details, [see the *Hardware Configuration* section of this document](http://research-it.berkeley.edu/services/high-performance-computing/user-guide/savio-user-guide).
+
+# Getting access to the system - FCA and condo
+
+- All regular Berkeley faculty can request 300,000 free service units (roughly core-hours) per year through the [Faculty Computing Allowance (FCA)](http://research-it.berkeley.edu/services/high-performance-computing/faculty-computing-allowance)
+- Researchers can also purchase nodes for their own priority access and gain access to the shared Savio infrastructure and to the ability to *burst* to additional nodes through the [condo cluster program](http://research-it.berkeley.edu/services/high-performance-computing/condo-cluster-program)
+- Instructors can request an [Instructional Computing Allowance (ICA)](http://research-it.berkeley.edu/programs/berkeley-research-computing/instructional-computing-allowance). 
+
+Faculty/principal investigators can allow researchers working with them to get user accounts with access to the FCA or condo resources available to the faculty member.
 
 # XSEDE resources overview
 
@@ -83,30 +107,15 @@ Some additional resources:
     - persistent databases
     - Hadoop
 
+# Accessing XSEDE
 
-# System capabilities and hardware
+BRC consultants (see next slide) can help get you started.
 
-- Savio is a >380-node, >8000-core Linux cluster rated at >300 peak teraFLOPS. 
-   - about 174 compute nodes provided by the institution for general access
-   - about 211 compute nodes contributed by researchers in the Condo program
+XSEDE has:
 
-Various pools (partitions) of nodes with specific capabilities
-
-  - 24-core, 64 GB compute nodes (allocated per node)
-  - large-memory nodes (128 GB and 512 GB)
-  - GPU nodes
-  - fast-CPU nodes allocated per core
-
-For more details, [see the *Hardware Configuration* section of this document](http://research-it.berkeley.edu/services/high-performance-computing/user-guide/savio-user-guide).
-
-# Getting access to the system - FCA and condo
-
-- All regular Berkeley faculty can request 300,000 free service units (roughly core-hours) per year through the [Faculty Computing Allowance (FCA)](http://research-it.berkeley.edu/services/high-performance-computing/faculty-computing-allowance)
-- Researchers can also purchase nodes for their own priority access and gain access to the shared Savio infrastructure and to the ability to *burst* to additional nodes through the [condo cluster program](http://research-it.berkeley.edu/services/high-performance-computing/condo-cluster-program)
-- Instructors can request an [Instructional Computing Allowance (ICA)](http://research-it.berkeley.edu/programs/berkeley-research-computing/instructional-computing-allowance). 
-
-Faculty/principal investigators can allow researchers working with them to get user accounts with access to the FCA or condo resources available to the faculty member.
-
+  - free initial exploration with limited core-hours (BRC can provide to you)
+  - free startup allocations for benchmarking (easy to get with modest application)
+  - free research allocations (more extensive application / more competitive)
 
 # Getting help
 
